@@ -50,6 +50,44 @@ async function hasUncommittedChanges(cwd: string): Promise<boolean> {
   return result.stdout.trim().length > 0;
 }
 
+function normalizeCommitTopic(branchName: string): string {
+  const topic = branchName.split('/').at(-1)?.trim().toLowerCase() ?? '';
+  if (!topic || topic === 'head') {
+    return 'task';
+  }
+
+  const normalized = topic
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+
+  return normalized || 'task';
+}
+
+function extractTaskSequence(taskId: string): string {
+  const match = taskId.match(/(\d+)(?!.*\d)/);
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  const fallback = taskId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+
+  return fallback || 'task';
+}
+
+function buildTaskCommitMessage(
+  branchName: string,
+  taskId: string,
+  taskTitle: string
+): string {
+  return `(${normalizeCommitTopic(branchName)}-${extractTaskSequence(taskId)}): ${taskTitle}`;
+}
+
 /**
  * Test-local implementation of performAutoCommit using Bun.spawn.
  * This mirrors the logic in src/engine/auto-commit.ts but bypasses node:child_process.
@@ -89,7 +127,19 @@ async function performAutoCommit(
     };
   }
 
-  const commitMessage = `feat: ${taskId} - ${taskTitle}`;
+  const branchResult = await runProcess('git', ['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
+  if (!branchResult.success) {
+    return {
+      committed: false,
+      error: `git branch lookup failed: ${branchResult.stderr.trim() || 'unknown error'}`,
+    };
+  }
+
+  const commitMessage = buildTaskCommitMessage(
+    branchResult.stdout.trim(),
+    taskId,
+    taskTitle
+  );
   const commitResult = await runProcess('git', ['commit', '-m', commitMessage], cwd);
   if (!commitResult.success) {
     return {
@@ -125,6 +175,7 @@ async function initGitRepo(dir: string): Promise<void> {
   await writeFile(join(dir, '.gitkeep'), '');
   await runOrFail(['add', '-A'], 'git add');
   await runOrFail(['commit', '-m', 'Internal: initial'], 'git commit');
+  await runOrFail(['branch', '-m', 'feature/keybinding-fix'], 'git branch -m');
 }
 
 beforeEach(async () => {
@@ -168,10 +219,10 @@ describe('performAutoCommit', () => {
   test('creates commit with correct message format', async () => {
     await writeFile(join(tempDir, 'task-output.txt'), 'done');
 
-    const result = await performAutoCommit(tempDir, 'TASK-42', 'Fix the login bug');
+    const result = await performAutoCommit(tempDir, 'US-001', 'Fix the login bug');
 
     expect(result.committed).toBe(true);
-    expect(result.commitMessage).toBe('feat: TASK-42 - Fix the login bug');
+    expect(result.commitMessage).toBe('(keybinding-fix-001): Fix the login bug');
     expect(result.commitSha).toBeDefined();
     expect(result.commitSha!.length).toBeGreaterThan(0);
     expect(result.error).toBeUndefined();

@@ -6,6 +6,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { buildTaskCommitMessage } from '../engine/auto-commit.js';
 
 /**
  * Validate that a string is a valid git ref name.
@@ -237,6 +238,8 @@ export class MergeEngine {
   enqueue(workerResult: WorkerResult): MergeOperation {
     const now = new Date().toISOString();
     const taskId = workerResult.task.id;
+    const targetBranch =
+      this.originalBranch ?? this.git(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
 
     const operation: MergeOperation = {
       id: `merge-${taskId}-${Date.now()}`,
@@ -244,7 +247,11 @@ export class MergeEngine {
       status: 'queued',
       backupTag: `ralph/pre-merge/${taskId}/${Date.now()}`,
       sourceBranch: workerResult.branchName,
-      commitMessage: `feat(${taskId}): ${workerResult.task.title}`,
+      commitMessage: buildTaskCommitMessage(
+        targetBranch,
+        taskId,
+        workerResult.task.title,
+      ),
       queuedAt: now,
     };
 

@@ -21,6 +21,47 @@ export interface AutoCommitResult {
   error?: string;
 }
 
+function normalizeCommitTopic(branchName: string): string {
+  const topic = branchName.split('/').at(-1)?.trim().toLowerCase() ?? '';
+  if (!topic || topic === 'head') {
+    return 'task';
+  }
+
+  const normalized = topic
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+
+  return normalized || 'task';
+}
+
+function extractTaskSequence(taskId: string): string {
+  const match = taskId.match(/(\d+)(?!.*\d)/);
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  const fallback = taskId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+
+  return fallback || 'task';
+}
+
+/**
+ * Build a commit subject from the branch topic and task identity.
+ */
+export function buildTaskCommitMessage(
+  branchName: string,
+  taskId: string,
+  taskTitle: string,
+): string {
+  return `(${normalizeCommitTopic(branchName)}-${extractTaskSequence(taskId)}): ${taskTitle}`;
+}
+
 /**
  * Check if there are uncommitted changes in the working directory.
  * Throws if git status cannot be determined (not a git repo, git not installed, etc.).
@@ -34,7 +75,7 @@ export async function hasUncommittedChanges(cwd: string): Promise<boolean> {
 }
 
 /**
- * Stage all changes and create a commit with a standardized message format.
+ * Stage all changes and create a commit with a branch-scoped message format.
  * Returns the result of the operation including commit SHA on success.
  */
 export async function performAutoCommit(
@@ -68,8 +109,21 @@ export async function performAutoCommit(
     };
   }
 
-  // Create commit with standardized message
-  const commitMessage = `feat: ${taskId} - ${taskTitle}`;
+  const branchResult = await runProcess('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+    cwd,
+  });
+  if (!branchResult.success) {
+    return {
+      committed: false,
+      error: `git branch lookup failed: ${branchResult.stderr.trim() || 'unknown error'}`,
+    };
+  }
+
+  const commitMessage = buildTaskCommitMessage(
+    branchResult.stdout.trim(),
+    taskId,
+    taskTitle,
+  );
   const commitResult = await runProcess(
     'git',
     ['commit', '-m', commitMessage],

@@ -14,6 +14,7 @@ import type { RalphConfig } from '../config/types.js';
 import type { ParallelEvent } from './events.js';
 import type { AiResolverCallback } from './conflict-resolver.js';
 import type { MergeOperation, WorkerResult, TaskGraphAnalysis } from './types.js';
+import { buildTaskCommitMessage } from '../engine/auto-commit.js';
 
 /**
  * Helper to create a minimal TrackerTask.
@@ -203,7 +204,11 @@ function createMergeOperation(
     status: 'conflicted',
     backupTag: `ralph/pre-merge/${workerResult.task.id}/${id}`,
     sourceBranch: workerResult.branchName,
-    commitMessage: `feat(${workerResult.task.id}): ${workerResult.task.title}`,
+    commitMessage: buildTaskCommitMessage(
+      'feature/keybinding-fix',
+      workerResult.task.id,
+      workerResult.task.title,
+    ),
     queuedAt: new Date().toISOString(),
     conflictedFiles: ['src/conflict.ts'],
     ...overrides,

@@ -27,6 +27,7 @@ function createTempRepo(): string {
   fs.writeFileSync(path.join(dir, 'README.md'), '# Test Repo\n');
   git(dir, 'add .');
   git(dir, 'commit -m "Initial commit"');
+  git(dir, 'branch -m "feature/keybinding-fix"');
   return dir;
 }
 
@@ -103,8 +104,7 @@ describe('MergeEngine', () => {
 
       expect(operation.status).toBe('queued');
       expect(operation.sourceBranch).toBe('ralph-parallel/T1');
-      expect(operation.commitMessage).toContain('T1');
-      expect(operation.commitMessage).toContain('Task T1');
+      expect(operation.commitMessage).toBe('(keybinding-fix-1): Task T1');
       expect(operation.queuedAt).toBeTruthy();
       expect(engine.getPendingCount()).toBe(1);
     });
